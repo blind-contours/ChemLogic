@@ -1,0 +1,29 @@
+Package: ChemLogic
+Title: Pipeline of methods that take in chemical fingerprint and molecular physical information and creates interpretable rules based on this information which leads to nuclear receptor binding
+Version: 0.0.0.9000
+Authors@R: 
+    person(given = "David",
+           family = "McCoy",
+           role = c("aut", "cre"),
+           email = "david_mccoy@berkeley.edu",
+           comment = c(ORCID = "YOUR-ORCID-ID"))
+Description: This package is aimed at making available a pipeline of clustering and machine learning tools that 1. identify sub-groups of chemicals that show structural similarity, 2. identify the interactions of molecular features that lead to binding, 3. combines these molecular feature rules with physical information to make predictions on nuclear receptor binding.
+License: `use_mit_license()`, `use_gpl3_license()` or friends to
+    pick a license
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.1.0
+Imports: 
+    readxl,
+    here,
+    readr,
+    logisticPCA,
+    ggplot2,
+    dplyr,
+    stats
+    
+Suggests: 
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
