@@ -4,7 +4,7 @@
 \alias{load_chem_data}
 \title{Load Chemical Fingerprint Data}
 \usage{
-load_chem_data(path, file_type)
+load_chem_data(path, file_type, filter = TRUE, filter_type = "Pubchem")
 }
 \arguments{
 \item{path}{Path to the input file}

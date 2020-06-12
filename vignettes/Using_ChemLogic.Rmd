@@ -20,30 +20,69 @@ library(ChemLogic)
 
 
 ```{r loading_binary_data}
-AR_data <- load_chem_data(path = "inst/extdata/Curated_AR_TOX21.xlsx", file_type = "xlsx", filter = TRUE, filter_type = "Pubchem")
-ER_data <- load_chem_data(path = "inst/extdata/Curated_ER_TOX21.xlsx", file_type = "xlsx", filter = TRUE, filter_type = "Pubchem")
-pubchem_fingerprints_cleaned <- load_chem_data(path = "inst/extdata/pubchem_fingerprints_cleaned.txt", file_type = "txt", filter = FALSE)
-PFAS_data <- load_chem_data(path = "inst/extdata/pfas.csv", file_type = "csv", filter = TRUE, filter_type = "Pubchem")
+AR_data <- load_chem_data(path = "inst/extdata/Curated_AR_TOX21.xlsx", 
+                          file_type = "xlsx", 
+                          filter = TRUE, 
+                          filter_type = "Pubchem")
+
+ER_data <- load_chem_data(path = "inst/extdata/Curated_ER_TOX21.xlsx", 
+                          file_type = "xlsx", 
+                          filter = TRUE, 
+                          filter_type = "Pubchem")
+
+pubchem_fingerprints_cleaned <- load_chem_data(path = "inst/extdata/pubchem_fingerprints_cleaned.txt", 
+                                               file_type = "txt", 
+                                               filter = FALSE)
+
+PFAS_data <- load_chem_data(path = "inst/extdata/pfas.csv", 
+                            file_type = "csv", 
+                            filter = TRUE, 
+                            filter_type = "Pubchem")
 ```
 
 ```{r loading_outcome_physical_data}
-AR_binding_type_data <- load_chem_data(path = "inst/extdata/AR_with_outcome.csv", file_type = "csv", filter = FALSE)
-AR_rdkit_descriptions <- load_chem_data(path = "inst/extdata/AR_withRDKIT_Descriptors.csv", file_type = "csv", filter = FALSE)
+
+AR_binding_type_data <- load_chem_data(path = "inst/extdata/AR_with_outcome.csv", 
+                                       file_type = "csv", 
+                                       filter = FALSE)
+
+ER_binding_type_data <- load_chem_data(path = "inst/extdata/ER_with_outcome.csv", 
+                                       file_type = "csv", 
+                                       filter = FALSE)
+
+
+AR_rdkit_descriptions <- load_chem_data(path = "inst/extdata/AR_withRDKIT_Descriptors.csv", 
+                                        file_type = "csv", 
+                                        filter = FALSE)
 ```
 
 ```{r bind_ag_antag_outcomes}
+
 table(AR_data$Name %in% AR_binding_type_data$Name)
 AR_cluster_data <- merge(AR_data, AR_binding_type_data, by = "Name")
+ER_cluster_data <- merge(ER_data, ER_binding_type_data, by = "Name")
+
 
 ## one of our outcome data variables has blanks for agonists/antagonists, let's change that for better plotting
-
 AR_cluster_data$ASSAY_OUTCOME <- ifelse(AR_cluster_data$ASSAY_OUTCOME =="", "no data", AR_cluster_data$ASSAY_OUTCOME)
+AR_cluster_data$ASSAY_OUTCOME <-as.factor(AR_cluster_data$ASSAY_OUTCOME)
+
+table(AR_cluster_data$ASSAY_OUTCOME)
+table(ER_cluster_data$ASSAY_OUTCOME)
+
 ```
 
 ```{r cluster binary molecular features}
 
-AR_cluster_results <- cluster_chem_data(receptor_type = "Androgen", data = AR_cluster_data, rank = 3, filter_type = "Pubchem")
-ER_cluster_results <- cluster_chem_data(receptor_type = "Estrogen", data = ER_data, rank = 3, filter_type = "Pubchem")
+AR_cluster_results <- cluster_chem_data(receptor_type = "Androgen", 
+                                        data = AR_data, 
+                                        rank = 3, 
+                                        filter_type = "Pubchem")
+
+ER_cluster_results <- cluster_chem_data(receptor_type = "Estrogen", 
+                                        data = ER_cluster_data, 
+                                        rank = 3, 
+                                        filter_type = "Pubchem")
 
 AR_cluster_results$kmean_plot
 ER_cluster_results$kmean_plot
@@ -53,14 +92,13 @@ ER_cluster_results$kmean_plot
 
 ```{r PC plots}
 
-
 AR_SVD_groups_results <- plot_SVD_kmeans(receptor_type = "Androgen", 
                 log_SVD_results = AR_cluster_results$logsvd_results, 
-                binary_data = AR_cluster_data, 
+                binary_data = AR_data, 
                 k = 4, 
                 endo_ligand = TRUE, 
                 endo_ligand_id = '144207887',
-                additional_label = TRUE, 
+                additional_label = FALSE, 
                 outcome_label = "ASSAY_OUTCOME") # is the name for testosterone the endogenous ligand
 
 AR_SVD_groups_results$plot_kmeans
@@ -70,13 +108,164 @@ AR_data_PCs_grps <- AR_SVD_groups_results$updated_data
 
 ER_SVD_groups_results <- plot_SVD_kmeans(receptor_type = "Estrogen", 
                 log_SVD_results = ER_cluster_results$logsvd_results, 
-                binary_data = ER_data, 
+                binary_data = ER_cluster_data, 
                 k = 4, 
                 endo_ligand = TRUE, 
-                endo_ligand_id = '144213948') # is the name for testosterone the endogenous ligand
+                endo_ligand_id = '144213948',
+                additional_label = TRUE, 
+                outcome_label = "ASSAY_OUTCOME") # is the name for testosterone the endogenous ligand
 
 ER_SVD_groups_results$plot_kmeans
-AR_data_PCs_grps <- SVD_groups_results$updated_data
+ER_SVD_groups_results$plot_outcome_label
+
+ER_data_PCs_grps <- ER_SVD_groups_results$updated_data
+
+AR_data_PCs_grps$log_SVM_group <-as.factor(AR_data_PCs_grps$log_SVM_group)
+ER_data_PCs_grps$log_SVM_group <-as.factor(ER_data_PCs_grps$log_SVM_group)
+
+AR_data_PCs_grps$Label_names <- tolower(AR_data_PCs_grps$Label_names)
+ER_data_PCs_grps$Label_names <- tolower(ER_data_PCs_grps$Label_names)
+
+
+
+```
+
+Running the MCMC logic regression
+```{r run logic}
+AR_data_PCs_grps$Label_names <- ifelse(AR_data_PCs_grps$Label_names == "inconclusive", "inactive", AR_data_PCs_grps$Label_names)
+AR_data_PCs_grps$Label_names <- ifelse(AR_data_PCs_grps$Label_names == "inconclusive" | AR_data_PCs_grps$Label_names == "inactive", 0, 1)
+
+table(AR_data_PCs_grps$Label_names)
+
+ER_data_PCs_grps$Label_names <- ifelse(ER_data_PCs_grps$Label_names == "inconclusive", "inactive", ER_data_PCs_grps$Label_names)
+ER_data_PCs_grps$Label_names <- ifelse(ER_data_PCs_grps$Label_names == "inconclusive" | ER_data_PCs_grps$Label_names == "inactive", 0, 1)
+
+table(ER_data_PCs_grps$Label_names)
+
+
+## run the logic MCMC on the androgen receptor data
+AR_logic_MCMC_results <- run_logic_MCMC(
+  outcome_label = quo(Label_names),
+  filter_type = "Pubchem",
+  binary_data = AR_data_PCs_grps,
+  subgroups = TRUE,
+  subgroup_label = quo(log_SVM_group),
+  mx_size = 50,
+  ntrees = 4,
+  n_burn_in = 5000,
+  niter = 200000,
+  hyperparameters = log(2),
+  outcome_permuted = FALSE,
+  top_fraction = 0.2
+)
+
+## run the logic MCMC on the estrogen receptor data
+ER_logic_MCMC_results <- run_logic_MCMC(
+  outcome_label = quo(Label_names),
+  filter_type = "Pubchem",
+  binary_data = ER_data_PCs_grps,
+  subgroups = TRUE,
+  subgroup_label = quo(log_SVM_group),
+  mx_size = 50,
+  ntrees = 4,
+  n_burn_in = 5000,
+  niter = 200000,
+  hyperparameters = log(2),
+  outcome_permuted = FALSE,
+  top_fraction = 0.2
+)
+
+
+```
+
+```{r get MCMC aggregated results}
+## collecting results for MCMC logic using all active as positive outcomes vs. non-binding for AR
+AR_MCMC_results_main_outcome <- map(.x = AR_logic_MCMC_results[2], 
+    .f = collect_logic_MCMC_results, 
+    fingerprints = pubchem_fingerprints_cleaned, 
+    niter = 200000, 
+    fingerprint_idx = 2, 
+    binary_data = AR_data_PCs_grps, 
+    filter_type = "Pubchem", 
+    top_fraction = 0.2)
+
+## collecting results for MCMC logic using all active as positive outcomes vs. non-binding for ER
+ER_MCMC_results_main_outcome <- map(.x = ER_logic_MCMC_results[2], 
+    .f = collect_logic_MCMC_results, 
+    fingerprints = pubchem_fingerprints_cleaned, 
+    niter = 200000, 
+    fingerprint_idx = 2, 
+    binary_data = ER_data_PCs_grps, 
+    filter_type = "Pubchem", 
+    top_fraction = 0.2)
+
+## collecting results for MCMC logic using subgroups as positive outcomes vs. non-binding
+AR_MCMC_results_subgroups <- map(.x = AR_logic_MCMC_results$MCMC_subgroups_analysis, 
+    .f = collect_logic_MCMC_results, 
+    fingerprints = pubchem_fingerprints_cleaned, 
+    niter = 200000, 
+    fingerprint_idx = 2, 
+    binary_data = AR_data_PCs_grps, 
+    filter_type = "Pubchem", 
+    top_fraction = 0.2)
+
+ER_MCMC_results_subgroups <- map(.x = ER_logic_MCMC_results$MCMC_subgroups_analysis, 
+    .f = collect_logic_MCMC_results, 
+    fingerprints = pubchem_fingerprints_cleaned, 
+    niter = 200000, 
+    fingerprint_idx = 2, 
+    binary_data = ER_data_PCs_grps, 
+    filter_type = "Pubchem", 
+    top_fraction = 0.2)
+
+```
+
+```{r plot_results}
+plot_model_size(AR_MCMC_results_main_outcome$MCMC_main_outcomes_analysis, receptor = "Androgen")
+plot_model_size(ER_MCMC_results_main_outcome$MCMC_main_outcomes_analysis, receptor = "Estrogen")
+```
+
+```{r var_use}
+AR_var_use <- plot_variables_in_MCMC(MCMC_results = AR_MCMC_results_main_outcome$MCMC_main_outcomes_analysis, receptor = "Androgen", top = 20, iters = 200000)
+AR_var_use
+
+ER_var_use <- plot_variables_in_MCMC(MCMC_results = ER_MCMC_results_main_outcome$MCMC_main_outcomes_analysis, receptor = "Estrogen", top = 20, iters = 200000)
+ER_var_use
+```
+```{r plot_var_use_comparisons}
+
+MCMC_var_use_comparisons <-plot_compare_vars_in_MCMC(MCMC_results_1 = AR_MCMC_results_main_outcome$MCMC_main_outcomes_analysis,
+                          MCMC_results_2  = ER_MCMC_results_main_outcome$MCMC_main_outcomes_analysis, 
+                          receptor_1 = "Androgen", 
+                          receptor_2 = "Estrogen", 
+                          top = 20, 
+                          iters = 200000)
+
+MCMC_var_use_comparisons$top_receptor_1_agst_2
+MCMC_var_use_comparisons$top_receptor_2_agst_1
+
+```
+
+```{r plot_var_use_comparisons_subgroups_of_receptor}
+
+subgroup_plots <- plot_compare_vars_subgroups(AR_MCMC_results_subgroups)
+
+subgroup_plots$`1`
+```
+
+```{r get_top_couples_and_triplets}
+AR_MCMC_couples_triples <- extract_MCMC_couples_triples(AR_MCMC_results_main_outcome$MCMC_main_outcomes_analysis, 
+                                                        receptor = "Androgen", 
+                                                        couple_thresh = 0.8, 
+                                                        triple_thresh = 0.6)
+
+ER_MCMC_couples_triples <- extract_MCMC_couples_triples(ER_MCMC_results_main_outcome$MCMC_main_outcomes_analysis, 
+                                                     receptor = "Estrogen", 
+                                                     couple_thresh = 0.8, 
+                                                     triple_thresh = 0.6)
+
+AR_ER_comparison_couples <- rbind(AR_MCMC_couples_triples$MCMC_couples, ER_MCMC_couples_triples$MCMC_couples)
+AR_ER_comparison_triples <- rbind(AR_MCMC_couples_triples$MCMC_triples, ER_MCMC_couples_triples$MCMC_triples)
 
 ```
 
