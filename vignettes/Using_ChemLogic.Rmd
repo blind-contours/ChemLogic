@@ -75,7 +75,7 @@ table(ER_cluster_data$ASSAY_OUTCOME)
 ```{r cluster binary molecular features}
 
 AR_cluster_results <- cluster_chem_data(receptor_type = "Androgen", 
-                                        data = AR_data, 
+                                        data = AR_cluster_data, 
                                         rank = 3, 
                                         filter_type = "Pubchem")
 
@@ -94,11 +94,11 @@ ER_cluster_results$kmean_plot
 
 AR_SVD_groups_results <- plot_SVD_kmeans(receptor_type = "Androgen", 
                 log_SVD_results = AR_cluster_results$logsvd_results, 
-                binary_data = AR_data, 
+                binary_data = AR_cluster_data, 
                 k = 4, 
                 endo_ligand = TRUE, 
                 endo_ligand_id = '144207887',
-                additional_label = FALSE, 
+                additional_label = TRUE, 
                 outcome_label = "ASSAY_OUTCOME") # is the name for testosterone the endogenous ligand
 
 AR_SVD_groups_results$plot_kmeans
@@ -133,14 +133,12 @@ ER_data_PCs_grps$Label_names <- tolower(ER_data_PCs_grps$Label_names)
 Running the MCMC logic regression
 ```{r run logic}
 AR_data_PCs_grps$Label_names <- ifelse(AR_data_PCs_grps$Label_names == "inconclusive", "inactive", AR_data_PCs_grps$Label_names)
-AR_data_PCs_grps$Label_names <- ifelse(AR_data_PCs_grps$Label_names == "inconclusive" | AR_data_PCs_grps$Label_names == "inactive", 0, 1)
+AR_data_PCs_grps$Label_names <- ifelse(AR_data_PCs_grps$Label_names == "inactive", 0, 1)
 
 table(AR_data_PCs_grps$Label_names)
 
 ER_data_PCs_grps$Label_names <- ifelse(ER_data_PCs_grps$Label_names == "inconclusive", "inactive", ER_data_PCs_grps$Label_names)
-ER_data_PCs_grps$Label_names <- ifelse(ER_data_PCs_grps$Label_names == "inconclusive" | ER_data_PCs_grps$Label_names == "inactive", 0, 1)
-
-table(ER_data_PCs_grps$Label_names)
+ER_data_PCs_grps$Label_names <- ifelse(ER_data_PCs_grps$Label_names == "inactive", 0, 1)
 
 
 ## run the logic MCMC on the androgen receptor data
@@ -232,6 +230,8 @@ AR_var_use
 ER_var_use <- plot_variables_in_MCMC(MCMC_results = ER_MCMC_results_main_outcome$MCMC_main_outcomes_analysis, receptor = "Estrogen", top = 20, iters = 200000)
 ER_var_use
 ```
+
+
 ```{r plot_var_use_comparisons}
 
 MCMC_var_use_comparisons <-plot_compare_vars_in_MCMC(MCMC_results_1 = AR_MCMC_results_main_outcome$MCMC_main_outcomes_analysis,
@@ -269,4 +269,68 @@ AR_ER_comparison_triples <- rbind(AR_MCMC_couples_triples$MCMC_triples, ER_MCMC_
 
 ```
 
+```{r extract_couples_triples_subgroups}
 
+androgen_subgroups_couples_triples <- extract_MCMC_couples_triples_subgroups(MCMC_results = AR_MCMC_results_subgroups, 
+                                                                            couple_thresh = 0.7, 
+                                                                            triple_thresh = 0.5)
+
+estrogen_subgroups_couples_triples <- extract_MCMC_couples_triples_subgroups(MCMC_results = ER_MCMC_results_subgroups, 
+                                                                            couple_thresh = 0.7, 
+                                                                            triple_thresh = 0.4)
+
+```
+
+```{r get mol tree variable}
+mol_boolean_itx_results <- create_molecular_tree_var(MCMC_results = AR_MCMC_results_main_outcome$MCMC_main_outcomes_analysis,
+                                      couple_thresh = 0.7,
+                                      triple_thresh = 0.5,
+                                      top_MCMC_vars_thresh = 0.8,
+                                      binary_data = AR_data_PCs_grps,
+                                      make_logic_tree = TRUE,
+                                      expand_boolean_grid = FALSE,
+                                      filter_type = "Pubchem",
+                                      fingerprints = pubchem_fingerprints_cleaned,
+                                      fingerprints_idx = 2,
+                                      outcome_label = quo(Label_names),
+                                      iters = 100) 
+
+tree_formula <- mol_boolean_itx_results[[1]]$tree_formula
+tree_var <- mol_boolean_itx_results[[1]]$tree_variable
+accuracy <- mol_boolean_itx_results[[1]]$accuracy
+
+```
+
+```{r combine_tree_var_with_physical_data}
+
+AR_data_PCs_grps_tree_var <- cbind(AR_data_PCs_grps, tree_var)
+
+tree_var_w_names <- AR_data_PCs_grps_tree_var %>% 
+  select(Name, mol_tree_var, !!outcome_label)
+
+
+AR_data_PCs_grps_tree_var <- merge(AR_rdkit_descriptions, tree_var_w_names, 
+                                   by.x = "NAME",
+                                   by.y = "Name")
+
+AR_data_PCs_grps_tree_var_cln <- AR_data_PCs_grps_tree_var %>% 
+  select(-c(NAME,X,SMILES,LABEL,mol))
+
+AR_data_PCs_grps_tree_var_cln$Label_names <- as.factor(AR_data_PCs_grps_tree_var_cln$Label_names)
+
+mol_ens <- pre(Label_names ~ ., 
+               data = AR_data_PCs_grps_tree_var_cln,
+               family = binomial)
+
+mol.cv <- cvpre(mol_ens)
+
+predictions <- mol.cv$cvpreds
+predictions_binary <- ifelse(predictions > 0.5, 1,0)
+
+prediction_cm <- table(predictions_binary, AR_data_PCs_grps_tree_var_cln$Label_names)
+confusionMatrix(prediction_cm)
+
+
+plot(mol_ens, nterms = 12, cex = .5)
+
+```

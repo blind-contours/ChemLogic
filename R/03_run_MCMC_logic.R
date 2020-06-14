@@ -45,13 +45,13 @@ run_logic_MCMC <- function(
     subgroup_outcomes <- map(.x = subgroup_outcomes, droplevels)
 
     check_outcome <- function(x) {
-      if(is.numeric(x[[1]])) {
-        x[[1]] <- ifelse(x[[1]] >= 1, 1,0)
+      if (is.numeric(x[[1]])) {
+        x[[1]] <- ifelse(x[[1]] >= 1, 1, 0)
       }
-      if(is.factor(x[[1]])) {
-        levels(x[[1]]) <- c(0,1)
+      if (is.factor(x[[1]])) {
+        levels(x[[1]]) <- c(0, 1)
         x[[1]] <- as.numeric(x[[1]])
-        x[[1]] <- x[[1]]  - 1
+        x[[1]] <- x[[1]] - 1
       }
 
       return(x[[1]])
@@ -114,9 +114,9 @@ run_logic_MCMC <- function(
 
 
 collect_logic_MCMC_results <- function(MCMC_results, fingerprints, niter, fingerprint_idx, binary_data, filter_type, top_fraction) {
-
   binary_exposure_data <- binary_data %>% dplyr::select(
-    contains(filter_type))
+    contains(filter_type)
+  )
 
 
   msz_by_iter_MCMC <- MCMC_results$size
