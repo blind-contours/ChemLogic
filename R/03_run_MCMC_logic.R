@@ -42,6 +42,10 @@ run_logic_MCMC <- function(
       !!(subgroup_label)
     ))
 
+    subgroup_names <- map(.x = subgroup_dfs, ~ dplyr::select(
+      .x, Name)
+    )
+
     subgroup_outcomes <- map(.x = subgroup_outcomes, droplevels)
 
     check_outcome <- function(x) {
@@ -107,7 +111,10 @@ run_logic_MCMC <- function(
 
   return(list(
     MCMC_subgroups_analysis = subgroup_logreg_MCMC_results,
-    MCMC_main_outcomes_analysis = main_outcome_logreg_MCMC_results
+    MCMC_main_outcomes_analysis = main_outcome_logreg_MCMC_results,
+    subgroup_outcomes = subgroup_outcomes,
+    subgroup_exposures = subgroup_exposures,
+    subgroup_names = subgroup_names
   ))
 }
 
@@ -117,7 +124,6 @@ collect_logic_MCMC_results <- function(MCMC_results, fingerprints, niter, finger
   binary_exposure_data <- binary_data %>% dplyr::select(
     contains(filter_type)
   )
-
 
   msz_by_iter_MCMC <- MCMC_results$size
   ni_in_model_MCMC <- MCMC_results$single

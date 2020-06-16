@@ -299,14 +299,94 @@ tree_formula <- mol_boolean_itx_results[[1]]$tree_formula
 tree_var <- mol_boolean_itx_results[[1]]$tree_variable
 accuracy <- mol_boolean_itx_results[[1]]$accuracy
 
+subgroup_mol_boolean_itx_results <- map(.x = AR_logic_MCMC_results[2],
+                                      .f=create_molecular_tree_var,
+                                      MCMC_result,
+                                      couple_thresh = 0.7,
+                                      triple_thresh = 0.5,
+                                      top_MCMC_vars_thresh = 0.8,
+                                      binary_data = AR_data_PCs_grps,
+                                      make_logic_tree = TRUE,
+                                      expand_boolean_grid = FALSE,
+                                      filter_type = "Pubchem",
+                                      fingerprints = pubchem_fingerprints_cleaned,
+                                      fingerprints_idx = 2,
+                                      outcome_label = quo(log_SVM_group),
+                                      iters = 100)
+
+subgroup_mol_boolean_itx_results <- purrr::pmap(list(AR_MCMC_results_subgroups,
+                                       AR_logic_MCMC_results$subgroup_outcomes,
+                                       AR_logic_MCMC_results$subgroup_exposures,
+                                       AR_logic_MCMC_results$subgroup_names),
+                                      .f=create_molecular_tree_var,
+                                      couple_thresh = 0,
+                                      triple_thresh = 0,
+                                      top_MCMC_vars_thresh = 0.4,
+                                      binary_data = AR_data_PCs_grps,
+                                      make_logic_tree = TRUE,
+                                      expand_boolean_grid = FALSE,
+                                      filter_type = "Pubchem",
+                                      fingerprints = pubchem_fingerprints_cleaned,
+                                      fingerprints_idx = 2,
+                                      outcome_label = quo(log_SVM_group),
+                                      iters = 100, 
+                                      subgroup = TRUE)
+
+
 ```
+
+```{r setup_python}
+library(reticulate)
+conda_list()
+use_condaenv(condaenv = 'my-rdkit-env', required = TRUE)
+
+```
+
+```{python my-rdkit-env}
+from rdkit import Chem
+from rdkit import DataStructs
+
+ms = [Chem.MolFromSmiles('CCOC'), Chem.MolFromSmiles('CCO'), Chem.MolFromSmiles('COC')]
+fps = [Chem.RDKFingerprint(x) for x in ms]
+DataStructs.FingerprintSimilarity(fps[0],fps[1])
+DataStructs.FingerprintSimilarity(fps[0],fps[2])
+DataStructs.FingerprintSimilarity(fps[1],fps[2])
+
+fps
+```
+
+
+
 
 ```{r combine_tree_var_with_physical_data}
 
-AR_data_PCs_grps_tree_var <- cbind(AR_data_PCs_grps, tree_var)
 
-tree_var_w_names <- AR_data_PCs_grps_tree_var %>% 
-  select(Name, mol_tree_var, !!outcome_label)
+for (i in 1:length(subgroup_mol_boolean_itx_results)) {
+  formulas[i] <- subgroup_mol_boolean_itx_results[[i]][[1]]$tree_formula
+}
+
+AR_data_PCs_grps <- AR_data_PCs_grps %>%
+    mutate(g1_mol_tree_var = ifelse(eval(parse(text = formulas[1])), 1, 0)) 
+
+AR_data_PCs_grps <- AR_data_PCs_grps %>%
+    mutate(g2_mol_tree_var = ifelse(eval(parse(text = formulas[2])), 1, 0)) 
+
+AR_data_PCs_grps <- AR_data_PCs_grps %>%
+    mutate(g3_mol_tree_var = ifelse(eval(parse(text = formulas[3])), 1, 0)) 
+
+AR_data_PCs_grps <- AR_data_PCs_grps %>%
+    mutate(g4_mol_tree_var = ifelse(eval(parse(text = formulas[4])), 1, 0)) 
+
+
+#AR_data_PCs_grps_tree_var <- cbind(AR_data_PCs_grps, tree_var)
+
+tree_var_w_names <- AR_data_PCs_grps %>% 
+  select(Name, 
+         g1_mol_tree_var, 
+         g2_mol_tree_var, 
+         g3_mol_tree_var, 
+         g4_mol_tree_var,
+         Label_names)
 
 
 AR_data_PCs_grps_tree_var <- merge(AR_rdkit_descriptions, tree_var_w_names, 
@@ -331,6 +411,6 @@ prediction_cm <- table(predictions_binary, AR_data_PCs_grps_tree_var_cln$Label_n
 confusionMatrix(prediction_cm)
 
 
-plot(mol_ens, nterms = 12, cex = .5)
+plot(mol_ens, nterms = 2, cex = .5)
 
 ```
