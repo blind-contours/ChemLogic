@@ -471,7 +471,7 @@ matt_coef <- function(conf_matrix)
   return(mcc_final)
 }
 
-map(.x = tables, .f = matt_coef)
+purrr::map(.x = tables, .f = matt_coef)
 ```
 
 ```{r }
