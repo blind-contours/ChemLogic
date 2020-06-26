@@ -1,0 +1,514 @@
+---
+title: "ChemLogic Walkthrough"
+author: "David McCoy"
+date: "6/25/2020"
+output: html_document
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(ChemLogic)
+```
+
+
+```{r loading_binary_data}
+## first we load our receptor 1 data, this is for the androgen receptor
+receptor_1_data <- load_chem_data(path = "inst/extdata/Curated_AR_TOX21.xlsx", 
+                          file_type = "xlsx", 
+                          filter = TRUE, 
+                          filter_type = "Pubchem")
+
+## first we load our receptor 2 data, this is for the estrogen receptor
+receptor_2_data <- load_chem_data(path = "inst/extdata/Curated_ER_TOX21.xlsx", 
+                          file_type = "xlsx", 
+                          filter = TRUE, 
+                          filter_type = "Pubchem")
+
+## load the chemical labels that correspond to the pubchem fingerprint columns
+pubchem_fingerprints_cleaned <- load_chem_data(path = "inst/extdata/pubchem_fingerprints_cleaned.txt", 
+                                               file_type = "txt", 
+                                               filter = FALSE)
+
+## get an array of the fingerprints
+fingerprints <- pubchem_fingerprints_cleaned[,2]
+
+## load test data for applying results to
+pfas_data <- load_chem_data(path = "inst/extdata/pfas.csv", 
+                            file_type = "csv", 
+                            filter = TRUE, 
+                            filter_type = "Pubchem")
+```
+
+
+```{r loading_outcome_physical_data}
+
+receptor1_binding_type_data <- load_chem_data(path = "inst/extdata/AR_with_outcome.csv", 
+                                       file_type = "csv", 
+                                       filter = FALSE)
+
+receptor2_binding_type_data <- load_chem_data(path = "inst/extdata/ER_with_outcome.csv", 
+                                       file_type = "csv", 
+                                       filter = FALSE)
+
+```
+
+
+```{r bind_ag_antag_outcomes}
+
+table(receptor_1_data$Name %in% receptor1_binding_type_data$Name)
+
+receptor_1_data_w_binding <- merge(receptor_1_data, 
+                                   receptor1_binding_type_data, 
+                                   by = "Name")
+
+table(receptor_1_data_w_binding$Label_names)
+
+receptor_2_data_w_binding <- merge(receptor_2_data, 
+                                   receptor2_binding_type_data, 
+                                   by = "Name")
+
+table(receptor_2_data_w_binding$Label_names)
+
+
+```
+
+Clean up the outcome data
+
+```{r clean_outcome}
+
+relabel_outcomes <- function(x) {
+  x$Label_names <- tolower(x$Label_names)
+  x$Label_names <- ifelse(x$Label_names == "inconclusive", 
+                                      "inactive",
+                                      x$Label_names)
+  
+  x$Label_names <- ifelse(x$Label_names == "inactive", 0, 1)
+  x$Label_names <- as.factor(x$Label_names)
+  
+  return(x)
+}
+
+receptor_1_data <- relabel_outcomes(receptor_1_data)
+receptor_2_data <- relabel_outcomes(receptor_2_data)
+receptor_1_data_w_binding <- relabel_outcomes(receptor_1_data_w_binding)
+receptor_2_data_w_binding <- relabel_outcomes(receptor_2_data_w_binding)
+
+table(receptor_1_data$Label_names)
+table(receptor_2_data$Label_names)
+
+```
+
+
+```{r clean_binding_type_outcomes}
+
+## one of our outcome data variables has blanks for agonists/antagonists, let's change that for better plotting
+receptor_1_data_w_binding$ASSAY_OUTCOME <- ifelse(receptor_1_data_w_binding$ASSAY_OUTCOME =="", "no data", receptor_1_data_w_binding$ASSAY_OUTCOME)
+
+receptor_1_data_w_binding$ASSAY_OUTCOME <-as.factor(receptor_1_data_w_binding$ASSAY_OUTCOME)
+
+## estrogen receptor
+receptor_2_data_w_binding$ASSAY_OUTCOME <- ifelse(receptor_2_data_w_binding$ASSAY_OUTCOME =="", "no data", receptor_2_data_w_binding$ASSAY_OUTCOME)
+
+receptor_2_data_w_binding$ASSAY_OUTCOME <-as.factor(receptor_2_data_w_binding$ASSAY_OUTCOME)
+
+table(receptor_2_data_w_binding$ASSAY_OUTCOME)
+
+```
+
+```{r cluster binary molecular features}
+
+receptor_1_cluster_results <- cluster_chem_data(receptor_type = "Androgen", 
+                                        data = receptor_1_data, 
+                                        rank = 5, 
+                                        filter_type = "Pubchem")
+
+receptor_2_cluster_results <- cluster_chem_data(receptor_type = "Estrogen", 
+                                        data = receptor_2_data, 
+                                        rank = 5, 
+                                        filter_type = "Pubchem")
+
+receptor_1_cluster_results$kmean_plot
+receptor_2_cluster_results$kmean_plot
+```
+
+
+
+```{r PC plots}
+
+receptor_1_SVD_grps_results <- plot_SVD_kmeans(receptor_type = "Androgen", 
+                log_SVD_results = receptor_1_cluster_results$logsvd_results, 
+                binary_data = receptor_1_data, ## binary data
+                k = 4, ## number of k-means clusters from plot above
+                outcome_label = quo(Label_names),
+                endo_ligand = TRUE, ## plot endogenous ligand?
+                endo_ligand_id = '144207887', ## chemical name for endogenous ligand of interest
+                additional_label = FALSE, ## if you want to colorize by a binding type label = TRUE
+                binding_label = "ASSAY_OUTCOME") ## label name for alternate label
+
+receptor_1_SVD_grps_results$plot_kmeans
+receptor_1_SVD_grps_results$plot_outcome_label
+
+receptor_1_data_wPCs_kgrps <- receptor_1_SVD_grps_results$updated_data
+
+receptor_2_SVD_grps_results <- plot_SVD_kmeans(receptor_type = "Estrogen", 
+                log_SVD_results = receptor_2_cluster_results$logsvd_results, 
+                binary_data = receptor_2_data, 
+                k = 3, 
+                outcome_label = quo(Label_names),
+                endo_ligand = TRUE, 
+                endo_ligand_id = '144213948',
+                additional_label = FALSE, 
+                binding_label = "ASSAY_OUTCOME") # is the name for testosterone the endogenous ligand
+
+receptor_2_SVD_grps_results$plot_kmeans
+receptor_2_SVD_grps_results$plot_outcome_label
+
+receptor_2_data_wPCs_kgrps <- receptor_2_SVD_grps_results$updated_data
+
+receptor_1_data_wPCs_kgrps$log_SVM_group <-as.factor(receptor_1_data_wPCs_kgrps$log_SVM_group)
+receptor_2_data_wPCs_kgrps$log_SVM_group <-as.factor(receptor_2_data_wPCs_kgrps$log_SVM_group)
+
+
+```
+
+Running the MCMC logic regression
+```{r run logic}
+
+## run the logic MCMC on the androgen receptor data
+receptor_1_logic_MCMC_results <- run_logic_MCMC(
+  outcome_label = quo(Label_names),
+  filter_type = "Pubchem",
+  binary_data = receptor_1_data_wPCs_kgrps, #make sure to update your binary data to be the dataframe with PCs and k-means groups
+  subgroups = TRUE,
+  subgroup_label = quo(log_SVM_group),
+  mx_size = 50,
+  ntrees = 4,
+  n_burn_in = 100000,
+  niter = 500000,
+  hyperparameters = log(2),
+  outcome_permuted = FALSE,
+  top_fraction = 0.2
+)
+
+## run the logic MCMC on the estrogen receptor data
+receptor_2_logic_MCMC_results <- run_logic_MCMC(
+  outcome_label = quo(Label_names),
+  filter_type = "Pubchem",
+  binary_data = receptor_2_data_wPCs_kgrps,
+  subgroups = TRUE,
+  subgroup_label = quo(log_SVM_group),
+  mx_size = 50,
+  ntrees = 4,
+  n_burn_in = 100000,
+  niter = 500000,
+  hyperparameters = log(2),
+  outcome_permuted = FALSE,
+  top_fraction = 0.2
+)
+```
+
+```{r get MCMC aggregated results}
+## collecting results for MCMC logic using all active as positive outcomes vs. non-binding for AR
+receptor_1_MCMC_results_main_outcome <- purrr::map(.x = receptor_1_logic_MCMC_results[2], 
+    .f = collect_logic_MCMC_results, 
+    fingerprints = fingerprints, 
+    niter = 500000, 
+    binary_data = receptor_1_data_wPCs_kgrps, ## still need to carry the new data with groups in for rule making
+    filter_type = "Pubchem", 
+    top_fraction = 0.2)
+
+## collecting results for MCMC logic using all active as positive outcomes vs. non-binding for ER
+receptor_2_MCMC_results_main_outcome <- purrr::map(.x = receptor_2_logic_MCMC_results[2], 
+    .f = collect_logic_MCMC_results, 
+    fingerprints = fingerprints, 
+    niter = 500000, 
+    binary_data = receptor_2_data_wPCs_kgrps, 
+    filter_type = "Pubchem", 
+    top_fraction = 0.2)
+
+## collecting results for MCMC logic using subgroups as positive outcomes vs. non-binding
+receptor_1_MCMC_results_subgroups <- purrr::map(.x = receptor_1_logic_MCMC_results$MCMC_subgroups_analysis, 
+    .f = collect_logic_MCMC_results, 
+    fingerprints = fingerprints, 
+    niter = 500000, 
+    binary_data = receptor_1_data_wPCs_kgrps, 
+    filter_type = "Pubchem", 
+    top_fraction = 0.2)
+
+receptor_2_MCMC_results_subgroups <- purrr::map(.x = receptor_2_logic_MCMC_results$MCMC_subgroups_analysis, 
+    .f = collect_logic_MCMC_results, 
+    fingerprints = fingerprints, 
+    niter = 500000, 
+    binary_data = receptor_2_data_wPCs_kgrps, 
+    filter_type = "Pubchem", 
+    top_fraction = 0.2)
+
+```
+
+```{r plot_results}
+plot_model_size(receptor_1_MCMC_results_main_outcome$MCMC_main_outcomes_analysis, receptor = "Androgen")
+plot_model_size(receptor_2_MCMC_results_main_outcome$MCMC_main_outcomes_analysis, receptor = "Estrogen")
+```
+
+```{r var_use}
+AR_var_use <- plot_variables_in_MCMC(MCMC_results = receptor_1_MCMC_results_main_outcome$MCMC_main_outcomes_analysis, 
+                                     receptor = "Androgen", 
+                                     top = 20, 
+                                     iters = 500000)
+AR_var_use
+
+ER_var_use <- plot_variables_in_MCMC(MCMC_results = receptor_2_MCMC_results_main_outcome$MCMC_main_outcomes_analysis, 
+                                     receptor = "Estrogen", 
+                                     top = 20, 
+                                     iters = 500000)
+ER_var_use
+```
+
+
+```{r plot_var_use_comparisons}
+
+MCMC_var_use_comparisons <-plot_compare_vars_in_MCMC(MCMC_results_1 = receptor_1_MCMC_results_main_outcome$MCMC_main_outcomes_analysis,
+                          MCMC_results_2  = receptor_2_MCMC_results_main_outcome$MCMC_main_outcomes_analysis, 
+                          receptor_1 = "Androgen", 
+                          receptor_2 = "Estrogen", 
+                          top = 20, 
+                          iters = 500000)
+
+MCMC_var_use_comparisons$top_receptor_1_agst_2
+MCMC_var_use_comparisons$top_receptor_2_agst_1
+
+```
+
+```{r plot_var_use_comparisons_subgroups_of_receptor}
+
+subgroup_plots <- plot_compare_vars_subgroups(receptor_1_MCMC_results_subgroups)
+
+subgroup_plots$`1`
+subgroup_plots$`2`
+subgroup_plots$`3`
+subgroup_plots$`4`
+
+
+```
+
+```{r get_top_couples_and_triplets}
+receptor_1_MCMC_couples_triples <- extract_MCMC_couples_triples(receptor_1_MCMC_results_main_outcome$MCMC_main_outcomes_analysis, 
+                                                        receptor = "Androgen", 
+                                                        couple_thresh = 0.6, 
+                                                        triple_thresh = 0.5)
+
+receptor_2_MCMC_couples_triples <- extract_MCMC_couples_triples(receptor_2_MCMC_results_main_outcome$MCMC_main_outcomes_analysis, 
+                                                     receptor = "Estrogen", 
+                                                     couple_thresh = 0.6, 
+                                                     triple_thresh = 0.5)
+
+recepter1_receptor2_comparison_couples <- rbind(receptor_1_MCMC_couples_triples$MCMC_couples, 
+                                                receptor_2_MCMC_couples_triples$MCMC_couples)
+
+receptor2_receptor1_comparison_triples <- rbind(receptor_1_MCMC_couples_triples$MCMC_triples, 
+                                                receptor_2_MCMC_couples_triples$MCMC_triples)
+
+```
+
+```{r extract_couples_triples_subgroups}
+
+androgen_subgroups_couples_triples <- extract_MCMC_couples_triples_subgroups(MCMC_results = receptor_1_MCMC_results_subgroups, 
+                                                                            couple_thresh = 0.7, 
+                                                                            triple_thresh = 0.5)
+
+estrogen_subgroups_couples_triples <- extract_MCMC_couples_triples_subgroups(MCMC_results = receptor_2_MCMC_results_subgroups, 
+                                                                            couple_thresh = 0.7, 
+                                                                            triple_thresh = 0.5)
+
+```
+
+```{r get mol tree variable}
+
+main_mol_boolean_itx_results <- purrr::map(.x = receptor_1_MCMC_results_main_outcome,
+                                      .f=create_molecular_tree_var,
+                                      MCMC_result,
+                                      couple_thresh = 0.5,
+                                      triple_thresh = 0.5,
+                                      top_MCMC_vars_thresh = 0.5,
+                                      binary_data = receptor_1_data_wPCs_kgrps,
+                                      make_logic_tree = TRUE,
+                                      expand_boolean_grid = FALSE,
+                                      filter_type = "Pubchem",
+                                      fingerprints = fingerprints,
+                                      outcome_label = quo(Label_names),
+                                      iters = 20,
+                                      subgroup = FALSE)
+
+subgroup_mol_boolean_itx_results <- purrr::pmap(list(receptor_1_MCMC_results_subgroups,
+                                       receptor_1_logic_MCMC_results$subgroup_outcomes,
+                                       receptor_1_logic_MCMC_results$subgroup_exposures,
+                                       receptor_1_logic_MCMC_results$subgroup_names),
+                                      .f=create_molecular_tree_var,
+                                      couple_thresh = 0,
+                                      triple_thresh = 0,
+                                      top_MCMC_vars_thresh = 0.5,
+                                      binary_data = receptor_1_data_wPCs_kgrps,
+                                      make_logic_tree = TRUE,
+                                      expand_boolean_grid = FALSE,
+                                      filter_type = "Pubchem",
+                                      fingerprints = fingerprints,
+                                      outcome_label = quo(log_SVM_group),
+                                      iters = 20, 
+                                      subgroup = TRUE)
+
+
+```
+
+Setting up Python environment in order to calculate molecular similarity scores and physical property scores
+
+```{r setup_python}
+library(reticulate)
+conda_list()
+use_condaenv(condaenv = 'my-rdkit-env', required = TRUE)
+
+```
+
+rdkit needs to be installed in a virtual environment, we then use the use_condaenv to use python/anaconda in this environment which has access to the rdkit tools: 
+
+```{python my-rdkit-env}
+import os
+import pandas as pd
+import numpy as np
+from rdkit import Chem, DataStructs
+from rdkit.Chem import Descriptors,Crippen
+#import matplotlib.pyplot as plt
+#from matplotlib import gridspec
+
+rdkit_data = pd.read_csv("/Users/davidmccoy/Documents/PhD/ChemLogic/inst/extdata/AR_with_outcome.csv", engine='python')
+
+rdkit_data.head()
+```
+
+```{python rdkit}
+from rdkit.Chem import MACCSkeys 
+from rdkit.Chem import rdMolDescriptors
+from rdkit import Chem, DataStructs
+from rdkit.Chem import Descriptors,Crippen
+
+target_ligand = Chem.MolFromSmiles('CC12CCC3C(C1CCC2O)CCC4=CC(=O)CCC34C') ## canonical smiles for Testosterone
+target_ligand = Chem.RDKFingerprint(target_ligand)
+
+for i in rdkit_data.index:
+    mol=Chem.MolFromSmiles(rdkit_data.loc[i,'SMILES'])
+    
+    print(rdkit_data.loc[i,'SMILES'])
+    print(i)
+    rdkit_data.loc[i,'mol']=mol
+    rdkit_data.loc[i,'ExactMolWt']=Descriptors.ExactMolWt(mol)
+    rdkit_data.loc[i,'FractionCSP3']=Descriptors.FractionCSP3(mol)
+    rdkit_data.loc[i,'HeavyAtomCount']=Descriptors.HeavyAtomCount(mol)
+    rdkit_data.loc[i,'LabuteASA']=Descriptors.LabuteASA(mol)
+    rdkit_data.loc[i,'MolLogP']=Descriptors.MolLogP(mol)
+    rdkit_data.loc[i,'MolWt']=Descriptors.MolWt(mol)
+    rdkit_data.loc[i,'NHOHCount']=Descriptors.NHOHCount(mol)
+    rdkit_data.loc[i,'NOCount']=Descriptors.NOCount(mol)
+    rdkit_data.loc[i,'NumAliphaticCarbocycles']=Descriptors.NumAliphaticCarbocycles(mol)
+    rdkit_data.loc[i,'NumAliphaticHeterocycles']=Descriptors.NumAliphaticHeterocycles(mol)
+    rdkit_data.loc[i,'NumAliphaticRings']=Descriptors.NumAliphaticRings(mol)
+    rdkit_data.loc[i,'NumAromaticCarbocycles']=Descriptors.NumAromaticCarbocycles(mol)
+    rdkit_data.loc[i,'NumAromaticHeterocycles']=Descriptors.NumAromaticHeterocycles(mol)
+    rdkit_data.loc[i,'NumAromaticRings']=Descriptors.NumAromaticRings(mol)
+    rdkit_data.loc[i,'NumHAcceptors']=Descriptors.NumHAcceptors(mol)
+    rdkit_data.loc[i,'NumHDonors']=Descriptors.NumHDonors(mol)
+    rdkit_data.loc[i,'NumRotatableBonds']=Descriptors.NumRotatableBonds(mol)
+    rdkit_data.loc[i,'NumSaturatedCarbocycles']=Descriptors.NumSaturatedCarbocycles(mol)
+    rdkit_data.loc[i,'NumSaturatedHeterocycles']=Descriptors.NumSaturatedHeterocycles(mol)
+    rdkit_data.loc[i,'NumSaturatedRings']=Descriptors.NumSaturatedRings(mol)
+    rdkit_data.loc[i,'RingCount']=Descriptors.RingCount(mol)
+    rdkit_data.loc[i,'TPSA']=Descriptors.TPSA(mol)
+    rdkit_data.loc[i,'NumAmideBonds']=rdMolDescriptors.CalcNumAmideBonds(mol)
+    rdkit_data.loc[i,'NumBridgeheadAtoms']=rdMolDescriptors.CalcNumBridgeheadAtoms(mol)
+    rdkit_data.loc[i,'NumSpiroAtom']=rdMolDescriptors.CalcNumSpiroAtoms(mol)   
+    rdkit_data.loc[i,'Tanimoto']=DataStructs.FingerprintSimilarity(Chem.RDKFingerprint(mol),target_ligand)
+
+  
+
+```
+
+
+```{r collect_chemical_physical_properties}
+
+physical_data <- py$rdkit_data
+
+
+```
+
+
+```{r combine_tree_var_with_physical_data}
+
+subgroup_mol_boolean_itx_results <- subgroup_mol_boolean_itx_results[-1]
+
+tables <- make_groves(subgroup_tree_formula_results = subgroup_mol_boolean_itx_results, 
+                              main_tree_formula_results = main_mol_boolean_itx_results, 
+                              input_data = receptor_1_data_wPCs_kgrps, 
+                              filter_type = "Pubchem", 
+                              outcome_label = quo(Label_names))
+
+
+matt_coef <- function(conf_matrix)
+{
+  TP <- conf_matrix$table[1,1]
+  TN <- conf_matrix$table[2,2]
+  FP <- conf_matrix$table[1,2]
+  FN <- conf_matrix$table[2,1]
+
+  mcc_num <- (TP*TN - FP*FN)
+  mcc_den <- 
+  as.double((TP+FP))*as.double((TP+FN))*as.double((TN+FP))*as.double((TN+FN))
+
+  mcc_final <- mcc_num/sqrt(mcc_den)
+  return(mcc_final)
+}
+
+map(.x = tables, .f = matt_coef)
+```
+
+```{r }
+
+tree_var_w_names <- AR_data_PCs_grps %>% 
+  select(Name, contains(filter_type),
+         Label_names)
+
+
+full_data <- merge(AR_rdkit_descriptions, tree_var_w_names, 
+                                   by.x = "NAME",
+                                   by.y = "Name")
+
+AR_data_PCs_grps_tree_var_cln <- full_data %>% 
+  select(-c(NAME,SMILES,LABEL,mol, X))
+
+AR_data_PCs_grps_tree_var_cln$Label_names <- as.factor(AR_data_PCs_grps_tree_var_cln$Label_names)
+
+mol_ens <- pre(Label_names ~ ., 
+               data = AR_data_PCs_grps_tree_var_cln,
+               family = binomial)
+
+mol.cv <- cvpre(mol_ens)
+
+predictions <- mol_ens$cvpreds
+predictions_binary <- ifelse(predictions > 0.5, 1,0)
+
+prediction_cm <- table(predictions_binary, AR_data_PCs_grps_tree_var_cln$Label_names)
+confusionMatrix(prediction_cm)
+
+
+plot(mol_ens, nterms = 5, cex = .5)
+
+coefs <- coef(mol_ens)
+imps <- importance(mol_ens, round = 4)
+
+expl <- explain(mol_ens, newdata =AR_data_PCs_grps_tree_var_cln, cex = .8)
+
+
+```

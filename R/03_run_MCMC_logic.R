@@ -24,29 +24,29 @@ run_logic_MCMC <- function(
                            top_fraction = 0.2) {
   if (subgroups) {
     binary_data_split <- binary_data %>%
-      filter(!!(outcome_label) == 1) %>%
-      group_split((!!(subgroup_label)))
+      dplyr::filter(!!(outcome_label) == 1) %>%
+      dplyr::group_split((!!(subgroup_label)))
 
     control_data <- binary_data %>%
-      filter(!!(outcome_label) != 1)
+      dplyr::filter(!!(outcome_label) != 1)
 
-    subgroup_dfs <- map(.x = binary_data_split, ~ rbind(.x, control_data))
+    subgroup_dfs <- purrr::map(.x = binary_data_split, ~ rbind(.x, control_data))
 
-    subgroup_exposures <- map(.x = subgroup_dfs, ~ dplyr::select(
+    subgroup_exposures <- purrr::map(.x = subgroup_dfs, ~ dplyr::select(
       .x,
       contains(filter_type)
     ))
 
-    subgroup_outcomes <- map(.x = subgroup_dfs, ~ dplyr::select(
+    subgroup_outcomes <- purrr::map(.x = subgroup_dfs, ~ dplyr::select(
       .x,
       !!(subgroup_label)
     ))
 
-    subgroup_names <- map(.x = subgroup_dfs, ~ dplyr::select(
+    subgroup_names <-purrr::map(.x = subgroup_dfs, ~ dplyr::select(
       .x, Name)
     )
 
-    subgroup_outcomes <- map(.x = subgroup_outcomes, droplevels)
+    subgroup_outcomes <- purrr::map(.x = subgroup_outcomes, droplevels)
 
     check_outcome <- function(x) {
       if (is.numeric(x[[1]])) {
@@ -61,12 +61,12 @@ run_logic_MCMC <- function(
       return(x[[1]])
     }
 
-    subgroup_outcomes <- map(.x = subgroup_outcomes, check_outcome)
+    subgroup_outcomes <- purrr::map(.x = subgroup_outcomes, check_outcome)
 
-    subgroup_logreg_MCMC_results <- map2(
+    subgroup_logreg_MCMC_results <- purrr::map2(
       .x = subgroup_exposures,
       .y = subgroup_outcomes,
-      .f = ~ logreg(
+      .f = ~ LogicReg::logreg(
         resp = .y,
         bin = .x,
         select = 7,
@@ -84,7 +84,6 @@ run_logic_MCMC <- function(
     subgroup_logreg_MCMC_results <- NULL
   }
 
-
   outcomes <- binary_data %>%
     dplyr::select(
       !!(outcome_label)
@@ -95,7 +94,7 @@ run_logic_MCMC <- function(
     contains(filter_type)
   )
 
-  main_outcome_logreg_MCMC_results <- logreg(
+  main_outcome_logreg_MCMC_results <- LogicReg::logreg(
     resp = outcomes[[1]],
     bin = mol_features,
     select = 7,
@@ -109,35 +108,46 @@ run_logic_MCMC <- function(
     )
   )
 
-  return(list(
+  return(
+    list(
     MCMC_subgroups_analysis = subgroup_logreg_MCMC_results,
     MCMC_main_outcomes_analysis = main_outcome_logreg_MCMC_results,
     subgroup_outcomes = subgroup_outcomes,
     subgroup_exposures = subgroup_exposures,
     subgroup_names = subgroup_names
-  ))
+  )
+  )
 }
 
+collect_logic_MCMC_results <- function(MCMC_results,
+                                       fingerprints,
+                                       niter,
+                                       binary_data,
+                                       filter_type,
+                                       top_fraction) {
 
+  #browser()
 
-collect_logic_MCMC_results <- function(MCMC_results, fingerprints, niter, fingerprint_idx, binary_data, filter_type, top_fraction) {
   binary_exposure_data <- binary_data %>% dplyr::select(
     contains(filter_type)
   )
 
   msz_by_iter_MCMC <- MCMC_results$size
-  ni_in_model_MCMC <- MCMC_results$single
+  ni_in_model_MCMC <- as.matrix(MCMC_results$single)
   nij_in_model_MCMC <- as.matrix(MCMC_results$double)
   nijk_in_model_MCMC <- as.array(MCMC_results$triple)
 
-  ni_in_model_MCMC_structures <- cbind(fingerprints, ni_in_model_MCMC)
+  ni_in_model_MCMC_structures <- as.data.frame(cbind(fingerprints, ni_in_model_MCMC))
+  colnames(ni_in_model_MCMC_structures) <- c("fingerprints", "ni_in_model_MCMC")
+  ni_in_model_MCMC_structures$ni_in_model_MCMC <- as.numeric(ni_in_model_MCMC_structures$ni_in_model_MCMC)
+
   ni_in_model_MCMC_structures$fraction <- ni_in_model_MCMC_structures$ni_in_model_MCMC / niter
   ni_in_model_MCMC_structures_ordered <- arrange(ni_in_model_MCMC_structures, desc(fraction))
 
   # ij in same trees
 
-  rownames(nij_in_model_MCMC) <- fingerprints[, fingerprint_idx]
-  colnames(nij_in_model_MCMC) <- fingerprints[, fingerprint_idx]
+  rownames(nij_in_model_MCMC) <- fingerprints
+  colnames(nij_in_model_MCMC) <- fingerprints
 
   nij_in_model_MCMC_collapsed <- setNames(reshape2::melt(nij_in_model_MCMC), c(
     "Bit Structure 1",
@@ -151,7 +161,7 @@ collect_logic_MCMC_results <- function(MCMC_results, fingerprints, niter, finger
 
   chem_obs <- dim(binary_exposure_data)[1]
   pij <- colSums(binary_exposure_data) / chem_obs
-  names(pij) <- fingerprints[, fingerprint_idx]
+  names(pij) <- fingerprints
   pij <- as.data.frame(pij)
 
   pij_calcs <- merge(nij_in_model_MCMC_collapsed_top,
@@ -174,9 +184,9 @@ collect_logic_MCMC_results <- function(MCMC_results, fingerprints, niter, finger
 
   # ijk combinations
 
-  dimnames(nijk_in_model_MCMC)[[1]] <- fingerprints[, fingerprint_idx]
-  dimnames(nijk_in_model_MCMC)[[2]] <- fingerprints[, fingerprint_idx]
-  dimnames(nijk_in_model_MCMC)[[3]] <- fingerprints[, fingerprint_idx]
+  dimnames(nijk_in_model_MCMC)[[1]] <- fingerprints
+  dimnames(nijk_in_model_MCMC)[[2]] <- fingerprints
+  dimnames(nijk_in_model_MCMC)[[3]] <- fingerprints
 
   nijk_in_model_MCMC_collapsed <- setNames(reshape2::melt(nijk_in_model_MCMC), c(
     "Bit Structure 1",
@@ -219,11 +229,13 @@ collect_logic_MCMC_results <- function(MCMC_results, fingerprints, niter, finger
 
   pijk_calcs$ratio <- pijk_calcs$fraction / pijk_calcs$expected_fraction
 
-  return(list(
+  return(
+    list(
     model = MCMC_results,
     model_sizes = msz_by_iter_MCMC,
     vars_in_iterations = ni_in_model_MCMC_structures_ordered,
     ij_interactions = pij_calcs,
     ijk_interactions = pijk_calcs
-  ))
+  )
+  )
 }

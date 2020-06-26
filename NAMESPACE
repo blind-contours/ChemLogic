@@ -2,5 +2,8 @@
 
 export(cluster_chem_data)
 export(load_chem_data)
+export(make_groves)
 export(plot_SVD_kmeans)
+export(plot_model_size)
 export(run_logic_MCMC)
+export(run_tree_construction)

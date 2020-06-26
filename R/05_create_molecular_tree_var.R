@@ -13,31 +13,66 @@ run_tree_construction <- function(resp,
                                   mol_tree_vars,
                                   binary_data) {
 
-  MCMC_vars_select_tree_construction <- logreg(
-    resp = resp,
-    bin = mol_tree_vars,
-    type = 1,
-    select = 1,
-    ntrees = 1,
-    kfold = 10,
-    nleaves = c(3,dim(mol_tree_vars)[2])
-  )
+  #browser()
+  if (dim(mol_tree_vars)[2] == dim(binary_data)[2]) {
+
+    MCMC_vars_select_tree_construction <- logreg(
+      resp = resp,
+      bin = mol_tree_vars,
+      type = 1,
+      select = 2,
+      ntrees = 1,
+      kfold = 5,
+      nleaves = c(1,10)
+    )
+
+
+  } else {
+
+    MCMC_vars_select_tree_construction <- logreg(
+      resp = resp,
+      bin = mol_tree_vars,
+      type = 1,
+      select = 2,
+      ntrees = 1,
+      kfold = 5,
+      nleaves = c(1,dim(mol_tree_vars)[2])
+    )
+  }
+
 
   #browser()
 
   #names(mol_tree_vars) <- paste0('X', 1:(ncol(mol_tree_vars)))
 
-  tree_formula <- MCMC_vars_select_tree_construction$model$trees[[1]]
+  min_model_indx <- which.min(MCMC_vars_select_tree_construction$allscores[,1])
+  tree_formula <- MCMC_vars_select_tree_construction$alltrees[min_model_indx][[1]]
+
   tree_formula <- capture.output(tree_formula)
+  tree_formula <- gsub(" \\+1 \\* ", "", tree_formula)
+
   tree_formula <- gsub("and", "&", tree_formula)
   tree_formula <- gsub("or", "|", tree_formula)
   tree_formula <- gsub("not", "!", tree_formula)
   #tree_formula <- gsub("X", "PubchemFP", tree_formula)
 
   for (i in seq(dim(mol_tree_vars)[2])) {
-    target <- paste("X",i, sep ="")
+    target <- paste('X',i, sep ="")
+    target_space <- paste(target, "")
+    #target <- paste("^", target, sep = "")
+    target_end <- paste(target, ')', sep = "")
+    target_start <- paste('\\(', target_space,  sep = "")
+
     pubchem_name <- colnames(mol_tree_vars)[i]
-    tree_formula <- gsub(target, pubchem_name, tree_formula)
+    pubchem_name_end <-paste(pubchem_name, ')', sep = "")
+    pubchem_name_start <-paste('(', pubchem_name, sep = "")
+
+
+    tree_formula <- gsub(target_start, pubchem_name_start, tree_formula)
+    tree_formula <- gsub(target_end, pubchem_name_end, tree_formula)
+
+    #print(i)
+    #print(tree_formula)
   }
 
   binary_data_w_mol_tree_var <- mol_tree_vars %>%
@@ -50,13 +85,22 @@ run_tree_construction <- function(resp,
   xtable <- table(binary_data_w_mol_tree_var$mol_tree_var, resp)
 
   if (dim(xtable)[1] > 1) {
-    accuracy <- sum(diag(xtable))/sum(xtable)
-  } else {accuracy <- 0}
+    xtable_cm <- caret::confusionMatrix(xtable)
+    sensitivity <- xtable_cm$byClass[1]
+    specificity <- xtable_cm$byClass[2]
+    balanced_accuracy <- xtable_cm$byClass[11]
+  } else {
+    balanced_accuracy <- 0
+    sensitivity <- 0
+    specificity <-0
+  }
 
   return(list(
     tree_formula = tree_formula,
     data_w_tree_variable = binary_data_w_mol_tree_var,
-    accuracy = accuracy,
+    balanced_accuracy = balanced_accuracy[[1]],
+    sensitivity = sensitivity[[1]],
+    specificity = specificity[[1]],
     table = xtable
   ))
 
@@ -74,11 +118,11 @@ create_molecular_tree_var <- function(.x,
                                       expand_boolean_grid = FALSE,
                                       filter_type = "Pubchem",
                                       fingerprints,
-                                      fingerprints_idx,
                                       outcome_label,
                                       iters,
                                       subgroup = TRUE,
                                       subgroup_outcome_data) {
+  #browser()
   MCMC_results <- .x
   top_individual_vars <- subset(MCMC_results$vars_in_iterations, fraction >= top_MCMC_vars_thresh)
   ij_interactions_top <- subset(MCMC_results$ij_interactions, fraction >= couple_thresh)
@@ -86,7 +130,10 @@ create_molecular_tree_var <- function(.x,
 
   vars_ind_top <- as.vector(top_individual_vars$Bit_Substructure)
   ij_vars_top <- c(as.vector(ij_interactions_top$`Bit Structure 1`), as.vector(ij_interactions_top$`Bit Structure 2`))
-  ijk_vars_top <- c(as.vector(ijk_interactions_top$`Bit Structure 1`), as.vector(ijk_interactions_top$`Bit Structure 2`), as.vector(ijk_interactions_top$`Bit Structure 3`))
+  ijk_vars_top <- c(as.vector(ijk_interactions_top$`Bit Structure 1`), as.vector(ijk_interactions_top$`Bit Structure 2`),
+                    as.vector(ijk_interactions_top$`Bit Structure 3`))
+
+  #browser()
 
   vars_to_use <- unique(c(vars_ind_top, ij_vars_top, ijk_vars_top))
 
@@ -97,7 +144,7 @@ create_molecular_tree_var <- function(.x,
     #browser()
     binary_data  <- filter(binary_data, Name %in% subgroup_names$Name)
     binary_data <- binary_data %>% select(contains(filter_type))
-    colnames(binary_data) <- fingerprints[, fingerprints_idx]
+    colnames(binary_data) <- fingerprints
     pubchem_match_idxs <- match(vars_to_use, colnames(binary_data))
 
     pubchem_names <- colnames(binary_data_exposures)[pubchem_match_idxs]
@@ -106,25 +153,40 @@ create_molecular_tree_var <- function(.x,
 
     #browser()
 
+    if(length(mol_tree_vars) <= 5){
+      mol_tree_vars <- binary_data_exposures
+      } else {mol_tree_vars <- mol_tree_vars}
+
     mol_tree_outcome <- .y
 
   } else{
     binary_data_exposures <- binary_data %>% select(contains(filter_type))
-    colnames(binary_data_exposures) <- fingerprints[, fingerprints_idx]
-    mol_tree_vars <- binary_data_exposures %>% select(vars_to_use)
+    binary_data_exposures_unlabeled <- binary_data_exposures
+
+    colnames(binary_data_exposures) <- fingerprints
+    pubchem_match_idxs <- match(vars_to_use, colnames(binary_data_exposures))
+    pubchem_names <- colnames(binary_data_exposures_unlabeled)[pubchem_match_idxs]
+
+    mol_tree_vars <- binary_data_exposures_unlabeled %>% select(pubchem_names)
 
     mol_tree_outcome <- binary_data %>% select(!!(outcome_label))
+
+    mol_tree_outcome <- mol_tree_outcome[[1]]
+
+    binary_data_exposures <- binary_data_exposures_unlabeled
+
   }
 
   mol_tree_outcome <- as.vector(mol_tree_outcome)
 
   if (make_logic_tree) {
-    #browser()
-    MC_results <- map(seq_len(iters), ~run_tree_construction(resp = mol_tree_outcome,
-                                                             mol_tree_vars = mol_tree_vars,
-                                                             binary_data = binary_data))
 
-    max_accuracy_idx <- which.max(sapply(MC_results, `[[`, "accuracy"))
+    MC_results <- purrr::map(seq_len(iters), ~run_tree_construction(resp = mol_tree_outcome,
+                                                             mol_tree_vars = mol_tree_vars,
+                                                             binary_data = binary_data_exposures))
+    #browser()
+
+    max_accuracy_idx <- which.max(sapply(MC_results, `[[`, "balanced_accuracy"))
     best_tree_results <- MC_results[max_accuracy_idx]
 
 

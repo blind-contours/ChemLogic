@@ -8,11 +8,23 @@
 #' @return Plot of SVD results colored by kmeans groups
 #' @export
 #'
-plot_SVD_kmeans <- function(receptor_type, log_SVD_results, binary_data, k = 4, endo_ligand = FALSE, endo_ligand_id, additional_label = TRUE, outcome_label = "ASSAY_OUTCOME") {
-  binary_data$Label_names <- tolower(binary_data$Label_names)
-  cluster_data_actives <- subset(binary_data, Label_names == "active")
+plot_SVD_kmeans <- function(receptor_type,
+                            log_SVD_results,
+                            binary_data,
+                            k = 4,
+                            outcome_label,
+                            endo_ligand = FALSE,
+                            endo_ligand_id,
+                            additional_label = TRUE,
+                            binding_label = "ASSAY_OUTCOME") {
+  #browser()
+  cluster_data_actives <- binary_data %>% dplyr::filter(!!outcome_label == 1)
 
-  kmeans_groups <- kmeans(log_SVD_results$A, k, nstart = 50, iter.max = 15)
+  kmeans_groups <- kmeans(log_SVD_results$A,
+                          k,
+                          nstart = 50,
+                          iter.max = 15)
+
   groups <- kmeans_groups$cluster
 
   if (endo_ligand) {
@@ -21,11 +33,13 @@ plot_SVD_kmeans <- function(receptor_type, log_SVD_results, binary_data, k = 4, 
     groups_endo_idx[idx] <- 20
   }
 
-  plot_w_kmeans <- plot(log_SVD_results, type = "scores") +
+  plot_w_kmeans <- plot(log_SVD_results,
+                        type = "scores") +
     geom_point(aes(colour = as.factor(groups_endo_idx))) +
     ggtitle(paste("Positive Binding for ", receptor_type, sep = ""))
 
-  data_negatives <- binary_data %>% filter(Label_names == "inconclusive" | Label_names == "inactive")
+  data_negatives <- binary_data %>%
+    dplyr::filter(!!outcome_label == 0)
 
   cluster_data_actives$log_SVM_group <- groups
   cluster_data_actives$PC_1 <- log_SVD_results$A[, 1]
@@ -37,19 +51,25 @@ plot_SVD_kmeans <- function(receptor_type, log_SVD_results, binary_data, k = 4, 
   data_negatives$PC_1 <- NA
   data_negatives$PC_2 <- NA
 
-  data_with_PCs_kmeans_groups <- rbind(cluster_data_actives, data_negatives)
+  data_with_PCs_kmeans_groups <- rbind(cluster_data_actives,
+                                       data_negatives)
 
   if (additional_label) {
     plot_outcome <- plot(log_SVD_results, type = "scores") +
-      geom_point(aes(colour = as.factor(cluster_data_actives$ASSAY_OUTCOME))) +
+      geom_point(aes(colour = as.factor(cluster_data_actives[,binding_label]))) +
       ggtitle(paste("Positive Binding for ", receptor_type, sep = ""))
   } else {
     plot_outcome <- NA
   }
 
   if (endo_ligand) {
-    return(list(plot_kmeans = plot_w_kmeans, plot_outcome_label = plot_outcome, updated_data = data_with_PCs_kmeans_groups, endo_ligand_grp_included = groups_endo_idx))
+    return(list(plot_kmeans = plot_w_kmeans,
+                plot_outcome_label = plot_outcome,
+                updated_data = data_with_PCs_kmeans_groups,
+                endo_ligand_grp_included = groups_endo_idx))
   } else {
-    list(plot_kmeans = plot_w_kmeans, plot_outcome_label = plot_outcome, updated_data = data_with_PCs_kmeans_groups)
+    list(plot_kmeans = plot_w_kmeans,
+         plot_outcome_label = plot_outcome,
+         updated_data = data_with_PCs_kmeans_groups)
   }
 }

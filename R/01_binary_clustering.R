@@ -9,13 +9,17 @@
 #' @return Plot of Kmeans for visual inspection before creating clusters
 #' @export
 #'
-cluster_chem_data <- function(receptor_type, data, rank = 3, filter_type = "Pubchem") {
+cluster_chem_data <- function(receptor_type,
+                              data,
+                              rank = 3,
+                              filter_type = "Pubchem") {
+
   data$Label_names <- tolower(data$Label_names)
-  cluster_data_actives <- subset(data, Label_names == "active")
+  cluster_data_actives <- subset(data, Label_names == 1)
 
   cluster_data_actives_mol_features <- dplyr::select(
     cluster_data_actives,
-    contains(filter_type)
+    dplyr::contains(filter_type)
   )
 
   logsvd_model_results <- logisticPCA::logisticSVD(cluster_data_actives_mol_features, k = rank)
@@ -26,17 +30,23 @@ cluster_chem_data <- function(receptor_type, data, rank = 3, filter_type = "Pubc
   wss <- sapply(
     1:k.max,
     function(k) {
-      kmeans(data, k, nstart = 50, iter.max = 15)$tot.withinss
+      kmeans(data,
+             k,
+             nstart = 50,
+             iter.max = 15)$tot.withinss
     }
   )
 
-  kmeans_plot <- ggplot(data = as.data.frame(cbind(k = 1:k.max, wss)), aes(x = k, y = wss, group = 1)) +
+  kmeans_plot <- ggplot(data = as.data.frame(cbind(k = 1:k.max, wss)),
+                        aes(x = k,
+                        y = wss, group = 1)) +
     geom_line() +
     geom_point() +
     xlab("Number of clusters K") +
     ylab("Total within-clusters sum of squares") +
-    labs(title = paste("K-means WSS for ", receptor_type, sep = ""), x = "Number of clusters K", y = "Total within-clusters sum of squares")
-
+    labs(title = paste("K-means WSS for ", receptor_type, sep = ""),
+         x = "Number of clusters K",
+         y = "Total within-clusters sum of squares")
 
   return(list(logsvd_results = logsvd_model_results, kmean_plot = kmeans_plot))
 }
