@@ -105,6 +105,8 @@ table(receptor_2_data$Label_names)
 ```
 
 
+
+
 ```{r clean_binding_type_outcomes}
 
 ## one of our outcome data variables has blanks for agonists/antagonists, let's change that for better plotting
@@ -144,7 +146,7 @@ receptor_2_cluster_results$kmean_plot
 receptor_1_SVD_grps_results <- plot_SVD_kmeans(receptor_type = "Androgen", 
                 log_SVD_results = receptor_1_cluster_results$logsvd_results, 
                 binary_data = receptor_1_data, ## binary data
-                k = 4, ## number of k-means clusters from plot above
+                k = 2, ## number of k-means clusters from plot above
                 outcome_label = quo(Label_names),
                 endo_ligand = TRUE, ## plot endogenous ligand?
                 endo_ligand_id = '144207887', ## chemical name for endogenous ligand of interest
@@ -179,21 +181,25 @@ receptor_2_data_wPCs_kgrps$log_SVM_group <-as.factor(receptor_2_data_wPCs_kgrps$
 
 Running the MCMC logic regression
 ```{r run logic}
+niter <- 10000
+n_burn_in <- 1000
+mx_size <- 50
+top_fraction <- 0.5
 
 ## run the logic MCMC on the androgen receptor data
 receptor_1_logic_MCMC_results <- run_logic_MCMC(
   outcome_label = quo(Label_names),
   filter_type = "Pubchem",
-  binary_data = receptor_1_data_wPCs_kgrps, #make sure to update your binary data to be the dataframe with PCs and k-means groups
+  binary_data = receptor_1_data_wPCs_kgrps,
   subgroups = TRUE,
   subgroup_label = quo(log_SVM_group),
-  mx_size = 50,
+  mx_size = mx_size,
   ntrees = 4,
-  n_burn_in = 100000,
-  niter = 500000,
-  hyperparameters = log(2),
+  n_burn_in = n_burn_in,
+  niter = niter,
   outcome_permuted = FALSE,
-  top_fraction = 0.2
+  top_fraction = top_fraction,
+  find_pop_tree = FALSE
 )
 
 ## run the logic MCMC on the estrogen receptor data
@@ -203,13 +209,13 @@ receptor_2_logic_MCMC_results <- run_logic_MCMC(
   binary_data = receptor_2_data_wPCs_kgrps,
   subgroups = TRUE,
   subgroup_label = quo(log_SVM_group),
-  mx_size = 50,
-  ntrees = 4,
-  n_burn_in = 100000,
-  niter = 500000,
+  mx_size = mx_size,
+  ntrees = 1,
+  n_burn_in = n_burn_in,
+  niter = niter,
   hyperparameters = log(2),
   outcome_permuted = FALSE,
-  top_fraction = 0.2
+  top_fraction = top_fraction
 )
 ```
 
@@ -218,36 +224,36 @@ receptor_2_logic_MCMC_results <- run_logic_MCMC(
 receptor_1_MCMC_results_main_outcome <- purrr::map(.x = receptor_1_logic_MCMC_results[2], 
     .f = collect_logic_MCMC_results, 
     fingerprints = fingerprints, 
-    niter = 500000, 
+    niter = niter, 
     binary_data = receptor_1_data_wPCs_kgrps, ## still need to carry the new data with groups in for rule making
     filter_type = "Pubchem", 
-    top_fraction = 0.2)
+    top_fraction = top_fraction)
 
 ## collecting results for MCMC logic using all active as positive outcomes vs. non-binding for ER
 receptor_2_MCMC_results_main_outcome <- purrr::map(.x = receptor_2_logic_MCMC_results[2], 
     .f = collect_logic_MCMC_results, 
     fingerprints = fingerprints, 
-    niter = 500000, 
+    niter = niter, 
     binary_data = receptor_2_data_wPCs_kgrps, 
     filter_type = "Pubchem", 
-    top_fraction = 0.2)
+    top_fraction = top_fraction)
 
 ## collecting results for MCMC logic using subgroups as positive outcomes vs. non-binding
 receptor_1_MCMC_results_subgroups <- purrr::map(.x = receptor_1_logic_MCMC_results$MCMC_subgroups_analysis, 
     .f = collect_logic_MCMC_results, 
     fingerprints = fingerprints, 
-    niter = 500000, 
+    niter = niter, 
     binary_data = receptor_1_data_wPCs_kgrps, 
     filter_type = "Pubchem", 
-    top_fraction = 0.2)
+    top_fraction = top_fraction)
 
 receptor_2_MCMC_results_subgroups <- purrr::map(.x = receptor_2_logic_MCMC_results$MCMC_subgroups_analysis, 
     .f = collect_logic_MCMC_results, 
     fingerprints = fingerprints, 
-    niter = 500000, 
+    niter = niter, 
     binary_data = receptor_2_data_wPCs_kgrps, 
     filter_type = "Pubchem", 
-    top_fraction = 0.2)
+    top_fraction = top_fraction)
 
 ```
 
@@ -260,13 +266,13 @@ plot_model_size(receptor_2_MCMC_results_main_outcome$MCMC_main_outcomes_analysis
 AR_var_use <- plot_variables_in_MCMC(MCMC_results = receptor_1_MCMC_results_main_outcome$MCMC_main_outcomes_analysis, 
                                      receptor = "Androgen", 
                                      top = 20, 
-                                     iters = 500000)
+                                     iters = niter)
 AR_var_use
 
 ER_var_use <- plot_variables_in_MCMC(MCMC_results = receptor_2_MCMC_results_main_outcome$MCMC_main_outcomes_analysis, 
                                      receptor = "Estrogen", 
                                      top = 20, 
-                                     iters = 500000)
+                                     iters = niter)
 ER_var_use
 ```
 
@@ -278,7 +284,7 @@ MCMC_var_use_comparisons <-plot_compare_vars_in_MCMC(MCMC_results_1 = receptor_1
                           receptor_1 = "Androgen", 
                           receptor_2 = "Estrogen", 
                           top = 20, 
-                          iters = 500000)
+                          iters = niter)
 
 MCMC_var_use_comparisons$top_receptor_1_agst_2
 MCMC_var_use_comparisons$top_receptor_2_agst_1
@@ -328,6 +334,45 @@ estrogen_subgroups_couples_triples <- extract_MCMC_couples_triples_subgroups(MCM
 
 ```
 
+
+```{r create mcmc popular tree vars}
+mcmc_pop_tree_main <-create_popular_tree_var(receptor_1_logic_MCMC_results$main_pop_mcmc_tree_results,
+                        binary_data  = receptor_1_data_wPCs_kgrps,
+                        filter_type = "Pubchem")
+
+receptor_1_data_wPCs_kgrps$mcmc_main_tree <- mcmc_pop_tree_main$pop_tree_var$mcmc_pop_tree_var
+
+mcmc_pop_tree_subgroups <- purrr::map(.x = receptor_1_logic_MCMC_results$subgroup_pop_mcmc_tree_results,
+                               .f = create_popular_tree_var,
+                                binary_data  = receptor_1_data_wPCs_kgrps,
+                                filter_type = "Pubchem")
+
+
+trees <-lapply(mcmc_pop_tree_subgroups, function (x) x[c('pop_tree_var')])
+
+for (i in 1:length(trees)) {
+  tree_name <- as.character(paste("mcmc_pop_tree", i, sep = ""))
+  receptor_1_data_wPCs_kgrps[,tree_name] <- trees[[i]]$pop_tree_var$mcmc_pop_tree_var
+}
+
+receptor_1_data_wPCs_kgrps$mcmc_grove <- ifelse(
+                                                  receptor_1_data_wPCs_kgrps$mcmc_pop_tree3 == 1 | 
+                                                  receptor_1_data_wPCs_kgrps$mcmc_pop_tree4 == 1 |
+                                                  receptor_1_data_wPCs_kgrps$mcmc_main_tree == 1, 1, 0)
+
+
+
+mcmc_grove_results  <- caret::confusionMatrix(table(receptor_1_data_wPCs_kgrps$mcmc_grove, receptor_1_data_wPCs_kgrps$Label_names))
+
+mcmc_main_results  <- caret::confusionMatrix(table(receptor_1_data_wPCs_kgrps$mcmc_main_tree, receptor_1_data_wPCs_kgrps$Label_names))
+
+
+
+
+```
+
+
+
 ```{r get mol tree variable}
 
 main_mol_boolean_itx_results <- purrr::map(.x = receptor_1_MCMC_results_main_outcome,
@@ -342,25 +387,32 @@ main_mol_boolean_itx_results <- purrr::map(.x = receptor_1_MCMC_results_main_out
                                       filter_type = "Pubchem",
                                       fingerprints = fingerprints,
                                       outcome_label = quo(Label_names),
-                                      iters = 20,
-                                      subgroup = FALSE)
+                                      iters = 10,
+                                      subgroup = FALSE,
+                                      mcmc = FALSE)
 
 subgroup_mol_boolean_itx_results <- purrr::pmap(list(receptor_1_MCMC_results_subgroups,
                                        receptor_1_logic_MCMC_results$subgroup_outcomes,
                                        receptor_1_logic_MCMC_results$subgroup_exposures,
-                                       receptor_1_logic_MCMC_results$subgroup_names),
+                                       receptor_1_logic_MCMC_results$subgroup_names,
+                                       group = c(1:length(receptor_1_logic_MCMC_results$subgroup_outcomes))),
                                       .f=create_molecular_tree_var,
-                                      couple_thresh = 0,
-                                      triple_thresh = 0,
-                                      top_MCMC_vars_thresh = 0.5,
+                                      couple_thresh = 0.1,
+                                      triple_thresh = 0.1,
+                                      top_MCMC_vars_thresh = 0.1,
                                       binary_data = receptor_1_data_wPCs_kgrps,
                                       make_logic_tree = TRUE,
                                       expand_boolean_grid = FALSE,
                                       filter_type = "Pubchem",
                                       fingerprints = fingerprints,
                                       outcome_label = quo(log_SVM_group),
-                                      iters = 20, 
-                                      subgroup = TRUE)
+                                      iters = 10, 
+                                      n_burn_in = 1000,
+                                      subgroup = TRUE,
+                                      mcmc = FALSE)
+
+
+
 
 
 ```
@@ -455,6 +507,9 @@ tables <- make_groves(subgroup_tree_formula_results = subgroup_mol_boolean_itx_r
                               filter_type = "Pubchem", 
                               outcome_label = quo(Label_names))
 
+updated_data <- tables$updated_data
+
+tables <- c(tables$main, tables$subgroup, tables$subgroup_main)
 
 matt_coef <- function(conf_matrix)
 {
@@ -476,17 +531,23 @@ purrr::map(.x = tables, .f = matt_coef)
 
 ```{r }
 
-tree_var_w_names <- AR_data_PCs_grps %>% 
-  select(Name, contains(filter_type),
-         Label_names)
+tree_var_w_names <- updated_data %>% 
+  select(Name, contains("mol_tree"),
+         Label_names,
+         subgroup_tree_w_main)
 
 
-full_data <- merge(AR_rdkit_descriptions, tree_var_w_names, 
-                                   by.x = "NAME",
+full_data <- merge(physical_data, tree_var_w_names, 
+                                   by.x = "Name",
                                    by.y = "Name")
 
 AR_data_PCs_grps_tree_var_cln <- full_data %>% 
-  select(-c(NAME,SMILES,LABEL,mol, X))
+  select(-c(Name,
+            SMILES,
+            Label,
+            mol, 
+            ASSAY_OUTCOME,
+            `Unnamed: 0`))
 
 AR_data_PCs_grps_tree_var_cln$Label_names <- as.factor(AR_data_PCs_grps_tree_var_cln$Label_names)
 
@@ -496,11 +557,11 @@ mol_ens <- pre(Label_names ~ .,
 
 mol.cv <- cvpre(mol_ens)
 
-predictions <- mol_ens$cvpreds
+predictions <- mol.cv$cvpreds
 predictions_binary <- ifelse(predictions > 0.5, 1,0)
 
 prediction_cm <- table(predictions_binary, AR_data_PCs_grps_tree_var_cln$Label_names)
-confusionMatrix(prediction_cm)
+caret::confusionMatrix(prediction_cm)
 
 
 plot(mol_ens, nterms = 5, cex = .5)

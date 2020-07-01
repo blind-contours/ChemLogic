@@ -21,7 +21,8 @@ run_logic_MCMC <- function(
                            niter,
                            hyperparameters = log(2),
                            outcome_permuted = FALSE,
-                           top_fraction = 0.2) {
+                           top_fraction = 0.2,
+                           find_pop_tree = FALSE) {
   if (subgroups) {
     binary_data_split <- binary_data %>%
       dplyr::filter(!!(outcome_label) == 1) %>%
@@ -63,23 +64,57 @@ run_logic_MCMC <- function(
 
     subgroup_outcomes <- purrr::map(.x = subgroup_outcomes, check_outcome)
 
-    subgroup_logreg_MCMC_results <- purrr::map2(
-      .x = subgroup_exposures,
-      .y = subgroup_outcomes,
-      .f = ~ LogicReg::logreg(
-        resp = .y,
-        bin = .x,
-        select = 7,
-        type = 3,
-        nleaves = mx_size,
-        ntrees = 1,
-        mc.control = logreg.mc.control(
-          nburn = n_burn_in,
-          niter = niter,
-          hyperpars = hyperparameters
+    ## we can't use map here because we need to check and rename the mcmc log file between each iteration
+    subgroup_logreg_MCMC_results <- list()
+    subgroup_pop_mcmc_tree_results <- list()
+
+    if (find_pop_tree == TRUE) {
+      for (i in 1:length(subgroup_outcomes)){
+        subgroup_exposure <- subgroup_exposures[[i]]
+        subgroup_outcome <- subgroup_outcomes[[i]]
+
+        subgroup_outcome <- as.factor(subgroup_outcome)
+
+        logreg_results <- LogicReg::logreg(
+          resp = subgroup_outcome,
+          bin = subgroup_exposure,
+          select = 7,
+          type = 3,
+          nleaves = mx_size,
+          ntrees = 1,
+          mc.control = logreg.mc.control(
+            nburn = n_burn_in,
+            niter = niter,
+            output=4
+          )
+        )
+        #browser()
+        subgroup_logreg_MCMC_results[[i]] <- logreg_results
+        ## check the mcmc tmp file name, change it for investigation later
+        pop_mcmc_tree_results <- get_visiting_mcmc_tree(group_idx = i)
+        subgroup_pop_mcmc_tree_results[[i]] <- pop_mcmc_tree_results
+        #browser()
+      }
+    } else {
+      subgroup_logreg_MCMC_results <- purrr::map2(
+        .x = subgroup_exposures,
+        .y = subgroup_outcomes,
+        .f = ~ LogicReg::logreg(
+          resp = .y,
+          bin = .x,
+          select = 7,
+          type = 3,
+          nleaves = mx_size,
+          ntrees = 1,
+          mc.control = logreg.mc.control(
+            nburn = n_burn_in,
+            niter = niter,
+            hyperpars = hyperparameters
+          )
         )
       )
-    )
+    }
+
   } else {
     subgroup_logreg_MCMC_results <- NULL
   }
@@ -94,24 +129,47 @@ run_logic_MCMC <- function(
     contains(filter_type)
   )
 
-  main_outcome_logreg_MCMC_results <- LogicReg::logreg(
-    resp = outcomes[[1]],
-    bin = mol_features,
-    select = 7,
-    type = 3,
-    nleaves = mx_size,
-    ntrees = ntrees,
-    mc.control = logreg.mc.control(
-      nburn = n_burn_in,
-      niter = niter,
-      hyperpars = hyperparameters
+  if (find_pop_tree == TRUE) {
+
+    main_outcome_logreg_MCMC_results <- LogicReg::logreg(
+      resp = outcomes[[1]],
+      bin = mol_features,
+      select = 7,
+      type = 3,
+      nleaves = mx_size,
+      ntrees = 1,
+      mc.control = logreg.mc.control(
+        nburn = n_burn_in,
+        niter = niter,
+        output = 4
     )
   )
+     main_pop_mcmc_tree_results<- get_visiting_mcmc_tree(group_idx = "main")
+
+  } else {
+    main_outcome_logreg_MCMC_results <- LogicReg::logreg(
+      resp = outcomes[[1]],
+      bin = mol_features,
+      select = 7,
+      type = 3,
+      nleaves = mx_size,
+      ntrees = ntrees,
+      mc.control = logreg.mc.control(
+        nburn = n_burn_in,
+        niter = niter,
+        hyperpars = hyperparameters
+      )
+    )
+
+    main_pop_mcmc_tree_results <- NULL
+  }
 
   return(
     list(
     MCMC_subgroups_analysis = subgroup_logreg_MCMC_results,
     MCMC_main_outcomes_analysis = main_outcome_logreg_MCMC_results,
+    subgroup_pop_mcmc_tree_results = subgroup_pop_mcmc_tree_results,
+    main_pop_mcmc_tree_results = main_pop_mcmc_tree_results,
     subgroup_outcomes = subgroup_outcomes,
     subgroup_exposures = subgroup_exposures,
     subgroup_names = subgroup_names
